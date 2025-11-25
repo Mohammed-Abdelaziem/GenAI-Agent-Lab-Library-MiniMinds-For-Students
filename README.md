@@ -18,7 +18,7 @@
 * [Advanced Context Engineering for Agents](https://www.youtube.com/watch?v=IS_y40zY-hc)
 
 ## Slides
-in the `assets/LabGenaiAgentsPart1.pdf`
+[canva link](https://www.canva.com/design/DAG5Fdlw4ck/w0alpGMqu2qWuvzYVMWbvA/edit?utm_content=DAG5Fdlw4ck&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
 
 ## TODOs
 
