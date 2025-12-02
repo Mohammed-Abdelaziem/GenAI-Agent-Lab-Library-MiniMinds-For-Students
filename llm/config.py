@@ -21,12 +21,30 @@ class LLMConfig(BaseModel):
     
     # Common configuration
     # TODO: add temperature field with validations (0.0 <= temperature <= 2.0) and make default = 0.7
-    raise NotImplementedError()
-    
+    temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature. Higher values = more creative responses."
+    )    
     # TODO: add top_p field with validations (0.0 <= top_p <= 1.0) and make default = 0.7
-    raise NotImplementedError()
+    top_p: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Top-p nucleus sampling. Controls diversity by limiting cumulative probability."
+    )    
     # TODO: add max_tokens field
-    raise NotImplementedError()
-    
+    max_tokens: Optional[int] = Field(
+        default=2048,
+        description="Maximum number of tokens to generate in the output."
+    )    
     # TODO: search on reasoning_effort and what it do (write description to this field)
-    raise NotImplementedError()
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description=(
+            "Controls the intensity of structured reasoning for models that support it "
+            "(e.g., Groq 'reasoning' mode). Examples: 'low', 'medium', 'high'. "
+            "Not all models or providers use this field."
+        )
+    )
