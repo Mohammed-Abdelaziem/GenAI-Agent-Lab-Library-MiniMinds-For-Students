@@ -17,7 +17,7 @@ class Session:
         Initialize Session with a session_id (auto-generate if None).
         """
         #TODO: set self.session_id and use uuid if None
-        raise NotImplementedError()
+        self.session_id = session_id or str(uuid.uuid4())
     
     def __enter__(self):
         logger.info(f"Entering session: {self.session_id}")
