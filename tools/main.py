@@ -6,8 +6,17 @@ from tools.toolkit.builtin import code_tools, file_tools, json_tools
 from llm.groq_client import GroqClient, LLMConfig
 from loguru import logger
 import json
+from tools.decorator import tool
 
 
+@tool()
+def calculator(a: int, b: int) -> int:
+    """Multiply two integers."""
+    return a * b
+def main():
+    print(calculator.to_string())
+    print(calculator(2, 3))
+    
 def simple_test_browser_tools():
     with Session("starting") as session:
         registery = ToolRegistry(session.session_id)
@@ -29,4 +38,5 @@ def simple_test_browser_tools():
         
 
 if __name__ == "__main__":
-    simple_test_browser_tools()
+    #simple_test_browser_tools()
+    main()

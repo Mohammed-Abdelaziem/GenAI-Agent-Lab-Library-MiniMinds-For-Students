@@ -32,14 +32,19 @@ def tool(name: str = None, description: str = None):
 
         # TODO: set func_description and func_name
         # TODO: Use the function's docstring as the description (default if None)
-        raise NotImplementedError()
-        func_description = None
+        func_description = description or (func.__doc__ or "").strip()
+        if not func_description:
+            func_description = "No description provided."
 
         # TODO: The function name becomes the Tool name
-        raise NotImplementedError()
-        func_name = None
+        func_name = name or func.__name__
 
         # TODO: Return a new Tool instance
-        raise NotImplementedError()
-        return None
+        return Tool(
+            name=func_name,
+            description=func_description,
+            func=func,
+            arguments=arguments,
+            outputs=outputs,
+        )
     return wrapper

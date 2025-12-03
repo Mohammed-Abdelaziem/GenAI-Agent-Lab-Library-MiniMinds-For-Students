@@ -2,6 +2,7 @@ from tools.decorator import tool
 from typing import Literal
 from browser_manager import get_page, close_page
 from loguru import logger
+import base64
 
 @tool()
 def goto_url(url: str, session_id: str = "default") -> str:
@@ -94,19 +95,54 @@ def click_element(selector: str, session_id: str = "default") -> str:
 @tool()
 def fill_input(selector: str, value: str, session_id: str = "default") -> str:
     "Fill a form input field."
-    raise NotImplementedError()
+    # TODO: add tool `screenshot` to take screenshot of current page and return it in format AI can read
+    # TODO: search on how to pass images to LLMs (there's a main format)
     
-# TODO: add tool `screenshot` to take screenshot of current page and return it in format AI can read
-# TODO: search on how to pass images to LLMs (there's a main format)
+    logger.debug(f"[fill_input] selector={selector}, value={value}, session_id={session_id}")
+    page = get_page(session_id)
+    try:
+        if selector.startswith("text="):
+            element = page.get_by_text(selector[5:], exact=False)
+        elif selector.startswith("role="):
+            role_part = selector[5:]
+            role_split = role_part.split(" name=")
+            role_name = role_split[0]
+            role_label = role_split[1] if len(role_split) > 1 else None
+            element = page.get_by_role(role_name, name=role_label)
+        else:
+            element = page.locator(selector)
+
+        if hasattr(element, "first"):
+            first_attr = getattr(element, "first")
+            element = first_attr() if callable(first_attr) else first_attr
+
+        if hasattr(element, "fill"):
+            element.fill(value)
+        else:
+            raise AttributeError("Locator does not support fill")
+
+        return f"Filled '{selector}' with '{value}'"
+    except Exception as e:
+        return f"Failed to fill input '{selector}': {str(e)}"
+    
 @tool()
 def screenshot(full_page: bool = False, session_id: str = "default") -> str:
     "Take a screenshot of the current page and return as base64."
     logger.debug(f"[screenshot] full_page={full_page}, session_id={session_id}")
-    raise NotImplementedError()
-
+    page = get_page(session_id)
+    try:
+        img_bytes = page.screenshot(full_page=full_page)
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        return f"Failed to take screenshot: {str(e)}"
 # TODO: add tool `end_browsing_page` to close page -> return string represent state (i.e error | success etc...)
 @tool()
 def end_browsing_page(session_id: str = "default") -> str:
     "Close the page (use only when done browsing)."
     logger.debug(f"[end_browsing_page] session_id={session_id}")
-    raise NotImplementedError()
+    try:
+        close_page(session_id)
+        return f"Closed browser page for session '{session_id}'"
+    except Exception as e:
+        return f"Failed to close page: {str(e)}"

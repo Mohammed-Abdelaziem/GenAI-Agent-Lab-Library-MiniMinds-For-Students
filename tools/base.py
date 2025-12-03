@@ -34,8 +34,12 @@ class Tool:
         """
         # TODO: complete function with proper string output
         # TODO: if there's session_id as argname skip it as we inject it
-        raise NotImplementedError()
-        args_str = None # how you concate args and skip session_id ?
+        filtered_args = [
+            f"{name}: {type_}"
+            for (name, type_) in self.arguments
+            if name != "session_id"
+        ]
+        args_str = ", ".join(filtered_args) if filtered_args else "None"
         
 
         return (
@@ -135,7 +139,9 @@ class Tool:
         Invoke the underlying function (callable) with provided arguments.
         """
         # TODO complete the function + inject session_id=self.session_id
-        raise NotImplementedError()
+        if self.session_id is not None:
+            kwargs.setdefault("session_id", self.session_id)
+            
         logger.debug(f"calling tool {self.name} with {args} {kwargs}")
         return self.func(*args, **kwargs)
         

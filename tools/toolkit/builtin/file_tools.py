@@ -11,8 +11,23 @@ def list_directory_files(path: str = ".", depth: int = 1) -> dict:
     try:
         # TODO:
         base = Path(path)
-        raise NotImplementedError()
+        
+        if not base.exists():
+            return {"success": False, "error": f"Path not found: {path}"}
+
+        result = {}
+
+        def walk(p: Path, d: int):
+            if d < 0:
+                return
+            result[str(p)] = [f.name for f in p.iterdir()]
+            for f in p.iterdir():
+                if f.is_dir():
+                    walk(f, d - 1)
+
+        walk(base, depth)
         return {"success": True, "result": result}
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -25,7 +40,10 @@ def read_file(file_path: str) -> dict:
     try:
         # TODO:
         p = Path(file_path)
-        raise NotImplementedError()
+        if not p.exists():
+            return {"success": False, "error": f"File not found: {file_path}"}
+
+        content = p.read_text(encoding="utf-8")
         return {"success": True, "result": content}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -38,7 +56,8 @@ def write_file(file_path: str, content: str) -> dict:
     """
     try:
         # TODO:
-        raise NotImplementedError()
+        p = Path(file_path)
+        p.write_text(content, encoding="utf-8")
         return {"success": True, "result": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -52,12 +71,12 @@ def create_folder(folder_path: str) -> dict:
     # TODO:
     try:
         p = Path(folder_path)
-        raise NotImplementedError()
+        p.mkdir(parents=True, exist_ok=False)
         return {"success": True, "result": True}
     except FileExistsError:
-        raise NotImplementedError()
+        return {"success": False, "error": "Folder already exists"}
     except Exception as e:
-        raise NotImplementedError()
+        return {"success": False, "error": str(e)}
 
 @tool()
 def remove_folder(folder_path: str) -> dict:
@@ -84,7 +103,9 @@ def remove_file(file_path: str) -> dict:
     try:
         # TODO:
         p = Path(file_path)
-        raise NotImplementedError()
+        if not p.exists():
+            return {"success": False, "error": f"File not found: {file_path}"}
+        p.unlink()
         return {"success": True, "result": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
