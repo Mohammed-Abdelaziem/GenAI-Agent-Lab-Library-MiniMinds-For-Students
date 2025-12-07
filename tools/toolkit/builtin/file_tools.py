@@ -68,13 +68,11 @@ def create_folder(folder_path: str) -> dict:
     Create a new folder (directory) at the specified path.
     Returns a dictionary with success/error status and result/message.
     """
-    # TODO:
     try:
         p = Path(folder_path)
-        p.mkdir(parents=True, exist_ok=False)
+        # idempotent: if exists, treat as success
+        p.mkdir(parents=True, exist_ok=True)
         return {"success": True, "result": True}
-    except FileExistsError:
-        return {"success": False, "error": "Folder already exists"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

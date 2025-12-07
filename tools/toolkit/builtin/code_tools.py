@@ -1,4 +1,5 @@
 from tools.decorator import tool
+import os
 from pathlib import Path
 import subprocess
 
@@ -32,18 +33,24 @@ def run_pytest_tests(directory: str = ".") -> dict:
     Returns output as a dictionary with success/error status and result/message.
     """
     try:
-        # TODO:
         p = Path(directory)
-        if not p.exists():
-            return {"success": False, "error": f"Directory not found: {directory}"}
+        if not p.exists() or not p.is_dir():
+            return {"success": False, "error": f"Not a directory: {directory}"}
+
+        # Ensure imports from repo root work during pytest execution
+        env = dict(**os.environ)
+        repo_root = Path(__file__).resolve().parents[3]
+        env["PYTHONPATH"] = str(repo_root)
 
         proc = subprocess.run(
-            ["pytest", str(p)],
+            ["pytest", "."],
             capture_output=True,
-            text=True
+            text=True,
+            cwd=str(p),
+            env=env,
         )
         output = proc.stdout + "\n" + proc.stderr
 
-        return {"success": True, "result": output.strip()}
+        return {"success": proc.returncode == 0, "result": output.strip()}
     except Exception as e:
         return {"success": False, "error": str(e)}

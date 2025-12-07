@@ -41,8 +41,25 @@ class GroqClient(LLMClient):
         max_tokens=self.config.max_tokens,
         tools=tools,
         )
-        ai_text = response.choices[0].message["content"]
-        return [AIMessage(content=ai_text)]
+        resp_msg = response.choices[0].message
+        ai_text = resp_msg.content or ""
+        tool_calls = getattr(resp_msg, "tool_calls", None) or []
+
+        # Convert tool_calls to plain dicts for downstream usage.
+        formatted_tool_calls = []
+        for tc in tool_calls:
+            if hasattr(tc, "to_dict"):
+                formatted_tool_calls.append(tc.to_dict())
+            elif hasattr(tc, "__dict__"):
+                formatted_tool_calls.append(tc.__dict__)
+            else:
+                formatted_tool_calls.append(tc)
+
+        return [{
+            "role": "ai",
+            "content": ai_text,
+            "tool_calls": formatted_tool_calls,
+        }]
     
     def stream(self, messages: List[Message], tools=None):
         formatted = self.format_messages(messages)
@@ -58,25 +75,45 @@ class GroqClient(LLMClient):
         tools=tools,
         )
         for chunk in stream:
-            if "content" in chunk.choices[0].delta:
-                yield AIMessage(content=chunk.choices[0].delta["content"])                
+            delta = chunk.choices[0].delta
+            if getattr(delta, "content", None):
+                yield AIMessage(content=delta.content)
     def format_messages(self, messages: List[Message]):
         formatted = []
         for msg in messages:
-            if msg.role == "human":
-                formatted.append({"role": "user", "content": msg.content})
-            elif msg.role == "ai":
-                formatted.append({"role": "assistant", "content": msg.content})
-            elif msg.role == "thinking":
-                formatted.append({"role": "reasoning", "content": msg.content})
-            elif msg.role == "tool":
-                formatted.append({"role": "tool", "content": msg.content, "name": msg.tool_name})
+            # Support both Message objects and plain dicts to keep compatibility
+            # with callers that still use dict structures.
+            role = msg["role"] if isinstance(msg, dict) else msg.role
+            content = msg["content"] if isinstance(msg, dict) else msg.content
+
+            if role == "system":
+                formatted.append({"role": "system", "content": content})
+            elif role == "user":
+                formatted.append({"role": "user", "content": content})
+            elif role == "human":
+                formatted.append({"role": "user", "content": content})
+            elif role == "ai":
+                formatted.append({"role": "assistant", "content": content})
+            elif role == "thinking":
+                formatted.append({"role": "reasoning", "content": content})
+            elif role == "tool":
+                if isinstance(msg, dict):
+                    tool_name = msg.get("name") or msg.get("tool_name", "")
+                    tool_call_id = msg.get("tool_call_id")
+                else:
+                    tool_name = getattr(msg, "tool_name", "")
+                    tool_call_id = getattr(msg, "tool_call_id", None)
+
+                tool_msg = {"role": "tool", "content": content, "name": tool_name}
+                if tool_call_id:
+                    tool_msg["tool_call_id"] = tool_call_id
+                formatted.append(tool_msg)
         return formatted
 if __name__ == "__main__":
     #TODO: initlaize configuraiton with reasoning model -- search for groq reasoning models 
     config = LLMConfig(
         provider="groq",
-        model_name="llama3-groq-70b-thinking",
+        model_name="openai/gpt-oss-120b",
         temperature=0.7,
         top_p=0.7,
         max_tokens=2000

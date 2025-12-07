@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 from pydantic import BaseModel, Field
-from langfuse import observe
 from loguru import logger
 import json
+from langfuse import observe
 
 from llm.base import LLMClient
 from tools.registry import ToolRegistry
@@ -44,21 +44,50 @@ class Agent(ABC):
 
     def iterate(self, *args, **kwargs) -> BaseAgentState:
         state = self.start_point(*args, **kwargs)
-        # TODO: iteration schema alwayse same regarding `self.run(state)``
-        # TODO: istate.is_finished or state.iteration > self.max_iteration
-        # TODO: while: run()
-        while not state.is_finished:
-            raise NotImplementedError()
+        while not state.is_finished and state.iteration < self.max_iterations:
+            state.iteration += 1
+            state = self.run(state)
 
         return state
 
     # LLM WRAPPER
     @observe(name="llm-call", as_type="generation")
     def llm_generate(self, state: BaseAgentState):
-        # TODO: wrap code to generate from llm -- self.tool_registry.to_client_tools to convert to client format
-        raise NotImplementedError()
+        tools = self.tool_registry.to_client_tools(self.llm.config.provider)
+        return self.llm.generate(state.messages, tools=tools)
     # TOOL EXECUTION WRAPPER
     @observe(name="tool-call", as_type="tool")
     def call_tool(self, tool_call):
-        # TODO: wrap code to execute function with error pron and tracing here
-        raise NotImplementedError()
+        """
+        Execute a tool call safely with logging and error capture.
+        tool_call shape:
+        {
+          "type": "function",
+          "id": "...",
+          "function": { "name": "...", "arguments": {... or json str ...} }
+        }
+        """
+        if tool_call.get("type") != "function":
+            return {"success": False, "error": f"Unsupported tool_call type {tool_call.get('type')}"}
+
+        func_name = tool_call["function"]["name"]
+        args_raw = tool_call["function"].get("arguments", {}) or {}
+
+        if isinstance(args_raw, str):
+            try:
+                func_inputs = json.loads(args_raw)
+            except Exception as e:
+                return {"success": False, "error": f"Invalid JSON arguments: {e}"}
+        else:
+            func_inputs = args_raw
+
+        try:
+            func = self.tool_registry.get(func_name)
+            if func is None:
+                raise ValueError(f"Tool {func_name} not found")
+            logger.debug(f"Calling tool {func_name} with {func_inputs}")
+            result = func(**func_inputs)
+            return {"success": True, "result": result}
+        except Exception as e:
+            logger.exception(f"Tool {func_name} failed")
+            return {"success": False, "error": str(e)}
