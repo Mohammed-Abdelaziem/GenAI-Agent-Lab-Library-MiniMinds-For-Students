@@ -1,107 +1,107 @@
 import sys
 from pathlib import Path
 
-# Ensure the project root is in sys.path for imports
+# Ensure the toolkit package is importable
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
+import builtins
+import types
 import pytest
 
 # Import the module under test
 from tools.toolkit import web_explorer
 
-# List of expected public functions in the web_explorer module
-EXPECTED_FUNCTIONS = [
-    "goto_url",
-    "get_page_content",
-    "click_element",
-    "fill_input",
-    "screenshot",
-    "end_browsing_page",
-]
+# Helper mock classes
+class MockElement:
+    def __init__(self):
+        self.clicked = False
+        self.sent_keys = None
+        self.screenshot_data = b"pngdata"
 
+    def click(self):
+        self.clicked = True
 
-def test_expected_functions_exist():
-    """Verify that all expected functions are defined in the module."""
-    for func_name in EXPECTED_FUNCTIONS:
-        assert hasattr(web_explorer, func_name), f"Missing function: {func_name}"
-        func = getattr(web_explorer, func_name)
-        assert callable(func), f"{func_name} should be callable"
+    def send_keys(self, text):
+        self.sent_keys = text
 
+    def screenshot_as_png(self):
+        return self.screenshot_data
 
-# The following tests attempt to call the functions with minimal, mocked
-# arguments. The actual implementation likely interacts with a browser driver
-# (e.g., Selenium). We monkey‑patch the driver‑related attributes to avoid real
-# network or UI operations.
+class MockDriver:
+    def __init__(self):
+        self.last_url = None
+        self.page_source = "<html></html>"
+        self.quitted = False
+        self.elements = {}
+        self.screenshot_taken = False
 
+    def get(self, url):
+        self.last_url = url
+
+    def find_element(self, by, value):
+        # Simplify: ignore 'by', just use value as key
+        if value not in self.elements:
+            self.elements[value] = MockElement()
+        return self.elements[value]
+
+    def get_screenshot_as_png(self):
+        self.screenshot_taken = True
+        return b"pngbytes"
+
+    def quit(self):
+        self.quitted = True
+
+# Fixture to inject a mock driver into the module
 @pytest.fixture(autouse=True)
-def mock_browser(monkeypatch):
-    """Replace any browser driver used by web_explorer with a dummy object.
+def mock_driver(monkeypatch):
+    driver = MockDriver()
+    # The module may store the driver in a private variable; we attempt common names
+    # If the module defines a global _driver, replace it; otherwise set an attribute
+    if hasattr(web_explorer, "_driver"):
+        monkeypatch.setattr(web_explorer, "_driver", driver, raising=False)
+    else:
+        monkeypatch.setattr(web_explorer, "driver", driver, raising=False)
+    return driver
 
-    The real module may create a driver instance (e.g., Selenium WebDriver) at
-    import time or lazily inside functions. We replace common attributes with a
-    simple mock that records calls but performs no action.
-    """
-    class DummyDriver:
-        def get(self, url):
-            pass
-
-        def find_element(self, *args, **kwargs):
-            return self
-
-        def click(self):
-            pass
-
-        def send_keys(self, *args, **kwargs):
-            pass
-
-        def page_source(self):
-            return "<html></html>"
-
-        def save_screenshot(self, path):
-            return True
-
-        def quit(self):
-            pass
-
-    dummy = DummyDriver()
-    # Common attribute names that the module might use
-    monkeypatch.setattr(web_explorer, "driver", dummy, raising=False)
-    # If the module lazily creates a driver via a helper, patch that too
-    monkeypatch.setattr(web_explorer, "_create_driver", lambda *args, **kwargs: dummy, raising=False)
-    yield dummy
-
-
-def test_goto_url_calls_driver_get(mock_browser):
-    # Provide a dummy URL; the dummy driver does nothing but should be called.
-    url = "http://example.com"
-    # If the function returns something, we ignore it; we just ensure no exception.
+def test_goto_url_calls_driver_get(mock_driver):
+    url = "https://example.com"
+    # Call the function under test
     web_explorer.goto_url(url)
+    # Verify the driver received the URL
+    assert mock_driver.last_url == url
 
-
-def test_get_page_content_returns_string(mock_browser):
+def test_get_page_content_returns_source(mock_driver):
+    # Set a custom page source to verify return value
+    mock_driver.page_source = "<html><body>Hello</body></html>"
     content = web_explorer.get_page_content()
-    assert isinstance(content, str)
+    assert content == mock_driver.page_source
 
-
-def test_click_element_no_error(mock_browser):
-    # Use a dummy selector; the dummy driver will accept any call.
+def test_click_element_finds_and_clicks(mock_driver):
     selector = "#button"
+    # Ensure element does not exist before call
+    assert selector not in mock_driver.elements
     web_explorer.click_element(selector)
+    # After call, element should exist and be clicked
+    element = mock_driver.elements.get(selector)
+    assert element is not None
+    assert element.clicked is True
 
-
-def test_fill_input_no_error(mock_browser):
+def test_fill_input_sends_keys(mock_driver):
     selector = "#input"
-    value = "test"
-    web_explorer.fill_input(selector, value)
+    text = "hello world"
+    web_explorer.fill_input(selector, text)
+    element = mock_driver.elements.get(selector)
+    assert element is not None
+    assert element.sent_keys == text
 
+def test_screenshot_calls_driver_and_returns_bytes(mock_driver):
+    # The screenshot function may accept a path; we ignore it for the test
+    result = web_explorer.screenshot()
+    # Verify driver method was called and bytes were returned
+    assert mock_driver.screenshot_taken is True
+    assert isinstance(result, (bytes, bytearray))
+    assert result == b"pngbytes"
 
-def test_screenshot_returns_path(mock_browser, tmp_path):
-    # The function may return the path to the saved screenshot.
-    path = web_explorer.screenshot(str(tmp_path / "shot.png"))
-    # Accept either None or a string path.
-    assert path is None or isinstance(path, str)
-
-
-def test_end_browsing_page_closes_driver(mock_browser):
-    # Ensure calling end_browsing_page does not raise.
+def test_end_browsing_page_quits_driver(mock_driver):
     web_explorer.end_browsing_page()
+    assert mock_driver.quitted is True

@@ -54,6 +54,28 @@ class Tool:
         Return a OpenAI-compatible tool schema for chat completion calls.
         Converts argument list to JSON Schema format.
         """
+        # Hacky compatibility: allow legacy calls that pass `path` instead of `file_path`
+        # for the read_file tool (some prompts/tools send that shape).
+        if self.name == "read_file":
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "path": {"type": "string"},
+                            "line_start": {"type": "integer"},
+                            "line_end": {"type": "integer"},
+                        },
+                        # Make all optional to avoid schema rejection when only path is sent.
+                        "required": [],
+                    },
+                },
+            }
+
         properties = {}
         required_args = []
 

@@ -5,6 +5,7 @@ And will execute them and report result
 Difference Between it And `00_raw_traced_unit_tester.py` no mlflow/langfuse 
 """
 import json
+from contextlib import nullcontext
 from loguru import logger
 from langfuse import observe, get_client
 from tools.registry import ToolRegistry
@@ -19,29 +20,31 @@ langfuse = get_client()
 
 @observe(name="llm-call", as_type="generation")
 def traced_client_generate(client, messages, tools):
-    #TODO: call client (provide tools in .generate) with registery.to_client_tools()
-    raise NotImplementedError()
-    # return client.generate(messages, tools)
+    return client.generate(messages, tools=tools)
 
 
 @observe(name="tool-call", as_type="tool")
 def traced_tool_execution(registery, tool_call):
     try:
-        # TODO: extract func_name, args and call it -> set tool_message {content: result}
-        func_name = 'dummy'      
-        args_raw = 'dummy'
+        func_name = tool_call["function"]["name"]
+        args_raw = tool_call["function"].get("arguments", {}) or {}
         if isinstance(args_raw, str):
             func_inputs = json.loads(args_raw)
         else:
             func_inputs = args_raw
-            
-        func_results = 'dummy'
+
+        func = registery.get(func_name)
+        if func is None:
+            raise ValueError(f"Tool {func_name} not found")
+        func_results = func(**func_inputs)
 
         tool_message = {
             "role": "tool",
             "tool_call_id": tool_call.get("id"),
+            "name": func_name,
             "content": json.dumps(func_results),
         }
+        return tool_message
     except Exception as error:
         return {
             "role": "tool",
@@ -83,14 +86,43 @@ messages = [
         """ 
     }
 ]
-# TODO: 1.3 create tool register and add tools/modules you need
-raise NotImplementedError()
-# TODO: 1.4 add tools to system_message use str.format method and  registery.to_string()
-raise NotImplementedError()
-# TODO: 1.5 set `files_under_test` and `tests_output_directory_path` in user_message like .format
-raise NotImplementedError()
-# TODO 1.6 set root span with root_span = langfuse.start_span(name , metadata)
-root_span = None
+# 1.3 create tool register and add tools/modules you need
+registery = ToolRegistry()
+registery.register(file_tools.write_file)
+registery.register(file_tools.read_file)
+registery.register(code_tools.run_pytest_tests)
+registery.register(file_tools.list_directory_files)
+registery.register(json_tools.json_is_valid)
+registery.register(web_explorer_tools.goto_url)
+registery.register(web_explorer_tools.get_page_content)
+registery.register(web_explorer_tools.click_element)
+registery.register(web_explorer_tools.fill_input)
+registery.register(web_explorer_tools.screenshot)
+registery.register(web_explorer_tools.end_browsing_page)
+
+# 1.4 add tools to system_message use str.format method and  registery.to_string()
+messages[0]["content"] = messages[0]["content"].format(tools=registery.to_string())
+
+# 1.5 set `files_under_test` and `tests_output_directory_path` in user_message like .format
+tests_output_directory_path = Path("tools/llm_tests")
+tests_output_directory_path.mkdir(parents=True, exist_ok=True)
+files_under_test = ["tools/toolkit/web_explorer.py"]
+messages[1]["content"] = messages[1]["content"].format(
+    files_under_test=files_under_test,
+    tests_output_directory_path=tests_output_directory_path,
+)
+
+# 1.6 set root span with root_span = langfuse.start_span(name , metadata)
+if langfuse:
+    root_span = langfuse.start_span(
+        name="raw-traced-unit-tester",
+        metadata={
+            "files_under_test": files_under_test,
+            "tests_output_directory_path": str(tests_output_directory_path),
+        },
+    )
+else:  # fallback if langfuse not configured
+    root_span = nullcontext()
 
 # ================ 2. Starts Iterations ================
 max_iterations = 20
@@ -99,26 +131,37 @@ while True:
     iteration += 1
     logger.info(f"Iteration {iteration}")
     with root_span.start_as_current_observation(as_type="span", name=f"iteration-{iteration}"):
-        # TODO 2.1 call client (provide tools in .generate) with registery.to_client_tools()
-        response = traced_client_generate(client, messages, tools=registery.to_client_tools(config.provider))
-        # TODO 2.2 append assistant message (role, content, **tool_calls**) *log it logger.info*
-        raise NotImplementedError()
+        response = traced_client_generate(client, messages, tools=registery.to_client_tools(config.provider))[0]
+        messages.append(
+            {
+                "role": response.get("role", "ai"),
+                "content": response.get("content", ""),
+                "tool_calls": response.get("tool_calls"),
+            }
+        )
+        logger.info(json.dumps(messages[-1], indent=2))
 
-        # TODO get content and check if is finished
-        # 2.3 Stop when one of the conditions happen
-        # 2.3 'finished' in response['content'] -- handle response['content']=None case
-        # 2.3 exceed max_iterations
-        raise NotImplementedError()
+        # Stop when finished flag found or max iterations reached
+        content = response.get("content") or ""
+        finished_flag = False
+        try:
+            parsed = json.loads(content)
+            finished_flag = isinstance(parsed, dict) and parsed.get("finished") is True
+        except Exception:
+            finished_flag = False
+
+        if finished_flag or iteration >= max_iterations:
+            break
         
-        # 2.4 execute any function execturion inside `tool_calls` || handle if it's None or not passed
+        # 2.4 execute any function execution inside `tool_calls`
         tool_calls = response.get("tool_calls", []) or []
         for tool_call in tool_calls:
-            if tool_call["type"] != "function":
+            if tool_call.get("type") != "function":
                 continue
-            
+
             tool_message = traced_tool_execution(registery, tool_call)
-                
             messages.append(tool_message)
             logger.info(f"tool response {json.dumps(tool_message, indent=2)}")
-            
-root_span.end()
+
+if hasattr(root_span, "end"):
+    root_span.end()
