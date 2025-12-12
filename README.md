@@ -152,7 +152,8 @@ python -m agent.examples.00_raw_unit_tester
     python -m agent.examples.01_raw_traced_unit_tester
     ```
 - the expected output
-    ![langfuse](assets/langfuse.png)
+    <img width="1920" height="860" alt="image" src="https://github.com/user-attachments/assets/fde91938-f028-4341-96bb-e4dde97f4b61" />
+
 
 
 ### 5.2. MiniAgents library (base)
