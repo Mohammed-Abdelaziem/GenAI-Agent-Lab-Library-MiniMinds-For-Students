@@ -19,7 +19,7 @@ You must return a JSON-compatible object containing:
 
 ### Execution Flow:
 1. Reasoning: Decide what to do next.
-2. Tool Call: Call one of the allowed tools if needed.
+2. Tool Call: Call one of the allowed tools if needed. Do **not** call `list_directory_files` more than once; after the initial listing, immediately read the target module and proceed to tests.
 3. Reasoning + Summarize Tool Output: Update scratchpad with distilled insights.
 4. Repeat step 2-3 as needed until the task is finished.
 for examples:
@@ -33,5 +33,10 @@ assistant: <scratchpad>{{"next_file_to_read": "subdir/fileX.py"}}</scratchpad>
 assistant: call read_file("subdir/fileX.py")
 tool_output: "def foo(): ..."
 assistant: <scratchpad>{{"functions_to_test": ["foo"]}}</scratchpad>
+
+Mandatory sequence after the first directory listing:
+- Read the target module (e.g., `tools/toolkit/web_explorer.py`).
+- Draft one pytest file under `tools/llm_tests/` (e.g., `test_web_explorer.py`).
+- Run `run_pytest_tests` on `tools/llm_tests`.
 ```
 if you didn't follow Execution FLOW you will be penalize
